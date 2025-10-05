@@ -3,7 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 
 // Konfigurasi
-const BOT_TOKEN = "7390709626:AAHZ4NUQFqaeUHhF10IBeiIMcvor_FIU8WY";
+const BOT_TOKEN = "8104521474:AAGmKMPG0OwN5w3iKWVyNTqyNbXUbm-dI9w";
 const VALIDATOR_API_URL = "http://localhost:3000"; // Base URL
 
 // Load admin data
