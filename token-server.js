@@ -1,20 +1,21 @@
+// token-server.js (Railway)
 const express = require('express');
 const fs = require('fs');
 const app = express();
 
-// MIDDLEWARE WAJIB
+// MIDDLEWARE
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 🔐 FILE UNTUK MENYIMPAN TOKEN
-const TOKENS_FILE = 'api-tokens.json';
+// 🔐 FILE UNTUK MENYIMPAN TOKEN (gunakan path Railway)
+const TOKENS_FILE = '/tmp/api-tokens.json';
 
 // 🔑 LOAD TOKENS DARI FILE
 function loadTokens() {
   try {
     if (!fs.existsSync(TOKENS_FILE)) {
-      // Buat file baru dengan array kosong
-      fs.writeFileSync(TOKENS_FILE, JSON.stringify({ tokens: [] }, null, 2));
+      const defaultTokens = { tokens: [] };
+      fs.writeFileSync(TOKENS_FILE, JSON.stringify(defaultTokens, null, 2));
       return [];
     }
     const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
@@ -28,7 +29,8 @@ function loadTokens() {
 // 💾 SIMPAN TOKENS KE FILE
 function saveTokens(tokens) {
   try {
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify({ tokens }, null, 2));
+    const data = { tokens };
+    fs.writeFileSync(TOKENS_FILE, JSON.stringify(data, null, 2));
     return true;
   } catch (error) {
     console.error('Error saving tokens:', error);
@@ -41,8 +43,9 @@ app.get('/', (req, res) => {
   const tokens = loadTokens();
   res.json({ 
     status: 'Active',
-    message: 'Token Validator Server is Running!',
+    message: 'Zalyst Token Validator Server is Running on Railway!',
     total_tokens: tokens.length,
+    environment: process.env.NODE_ENV || 'development',
     endpoints: {
       validate: 'POST /validate-token',
       add_token: 'POST /add-token',
@@ -197,9 +200,14 @@ app.get('/list-tokens', (req, res) => {
     
     console.log(`📋 Returning ${tokens.length} tokens`);
     
+    // Mask tokens untuk security
+    const maskedTokens = tokens.map(token => {
+      return `${token.substring(0, 10)}...${token.substring(token.length - 5)}`;
+    });
+    
     res.json({ 
       success: true, 
-      tokens: tokens,
+      tokens: maskedTokens,
       total_tokens: tokens.length
     });
     
@@ -212,7 +220,7 @@ app.get('/list-tokens', (req, res) => {
   }
 });
 
-// Handle 404 untuk route yang tidak ada
+// Handle 404
 app.use('*', (req, res) => {
   res.status(404).json({ 
     error: 'Endpoint not found',
@@ -228,7 +236,7 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Token Server running on port ${PORT}`);
+  console.log(`✅ Zalyst Token Server running on port ${PORT}`);
   console.log(`📁 Token file: ${TOKENS_FILE}`);
   console.log(`🔐 Total tokens loaded: ${loadTokens().length}`);
 });
