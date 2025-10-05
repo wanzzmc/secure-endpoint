@@ -46,10 +46,10 @@ app.get('/', (req, res) => {
     total_tokens: tokens.length,
     environment: process.env.NODE_ENV || 'development',
     endpoints: {
-      validate: 'POST /validate-token',
-      add_token: 'POST /add-token',
-      delete_token: 'DELETE /delete-token',
-      list_tokens: 'GET /list-tokens'
+      validate: 'POST Jembut',
+      add_token: 'POST Jembut',
+      delete_token: 'DELETE Jembut',
+      list_tokens: 'GET Jembut'
     }
   });
 });
