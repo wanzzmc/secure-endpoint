@@ -1,26 +1,10 @@
+// token-bot-manager.js (Railway)
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const fs = require('fs');
 
-// Konfigurasi
-const BOT_TOKEN = "8104521474:AAGmKMPG0OwN5w3iKWVyNTqyNbXUbm-dI9w";
-const VALIDATOR_API_URL = "http://localhost:3000"; // Base URL
-
-// Load admin data
-function loadAdmins() {
-  try {
-    const ADMIN_FILE = "admin.json";
-    if (!fs.existsSync(ADMIN_FILE)) return { owners: [], admins: [] };
-    return JSON.parse(fs.readFileSync(ADMIN_FILE));
-  } catch (error) {
-    return { owners: [], admins: [] };
-  }
-}
-
-function isAdmin(userId) {
-  const { admins, owners } = loadAdmins();
-  return owners.includes(userId) || admins.includes(userId);
-}
+// Konfigurasi - TIDAK PERLU .env UNTUK TOKEN
+const BOT_TOKEN = "8104521474:AAGmKMPG0OwN5w3iKWVyNTqyNbXUbm-dI9w"; // Token bot manager
+const VALIDATOR_API_URL = process.env.RAILWAY_STATIC_URL || 'http://localhost:3000';
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -74,7 +58,7 @@ async function getTokensFromAPI() {
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const menuText = `
-🤖 *API Token Manager Bot*
+🤖 *Zalyst Token Manager Bot*
 
 *Available Commands:*
 /addtoken <token> - Tambah token baru ke API
@@ -91,12 +75,7 @@ bot.onText(/\/start/, (msg) => {
 // Command untuk menambah token
 bot.onText(/\/addtoken (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const userId = msg.from.id;
   const token = match[1].trim();
-
-  if (!isAdmin(userId)) {
-    return bot.sendMessage(chatId, "❌ Hanya admin yang bisa menambah token!");
-  }
 
   try {
     // Validasi format token Telegram
@@ -150,11 +129,6 @@ bot.onText(/\/checktoken (.+)/, async (msg, match) => {
 // Command untuk list tokens
 bot.onText(/\/listtokens/, async (msg) => {
   const chatId = msg.chat.id;
-  const userId = msg.from.id;
-
-  if (!isAdmin(userId)) {
-    return bot.sendMessage(chatId, "❌ Hanya admin yang bisa melihat daftar token!");
-  }
 
   try {
     bot.sendMessage(chatId, "📋 Mengambil daftar token dari API...");
@@ -164,11 +138,10 @@ bot.onText(/\/listtokens/, async (msg) => {
     if (result.success && result.tokens.length > 0) {
       let tokenList = "📋 *Daftar Token dari API:*\n\n";
       result.tokens.forEach((token, index) => {
-        const maskedToken = `${token.substring(0, 10)}...${token.substring(token.length - 5)}`;
-        tokenList += `${index + 1}. \`${maskedToken}\`\n`;
+        tokenList += `${index + 1}. \`${token}\`\n`;
       });
 
-      tokenList += `\n*Total:* ${result.tokens.length} token`;
+      tokenList += `\n*Total:* ${result.total_tokens} token`;
 
       bot.sendMessage(chatId, tokenList, { parse_mode: "Markdown" });
     } else {
@@ -182,12 +155,7 @@ bot.onText(/\/listtokens/, async (msg) => {
 // Command untuk delete token
 bot.onText(/\/deletetoken (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const userId = msg.from.id;
   const tokenToDelete = match[1].trim();
-
-  if (!isAdmin(userId)) {
-    return bot.sendMessage(chatId, "❌ Hanya admin yang bisa menghapus token!");
-  }
 
   try {
     bot.sendMessage(chatId, "🗑️ Menghapus token dari API...");
@@ -206,14 +174,4 @@ bot.onText(/\/deletetoken (.+)/, async (msg, match) => {
   }
 });
 
-// Handler untuk pesan tidak dikenal
-bot.on('message', (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  if (!text.startsWith('/')) {
-    bot.sendMessage(chatId, "❌ Command tidak dikenali. Ketik /start untuk melihat menu.");
-  }
-});
-
-console.log("🤖 API Token Manager Bot berjalan...");
+console.log("🤖 Token Manager Bot berjalan di Railway...");
