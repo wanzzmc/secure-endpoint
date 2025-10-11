@@ -1,6 +1,6 @@
 {
   "name": "zalyst-token-server",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Enhanced Token Validation Server with Encrypted Response",
   "main": "token-server.js",
   "scripts": {
@@ -13,9 +13,7 @@
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "helmet": "^7.1.0",
-    "cors": "^2.8.5",
-    "express-rate-limit": "^7.1.5"
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
