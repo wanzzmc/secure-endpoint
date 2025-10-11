@@ -1,40 +1,21 @@
 const express = require('express');
 const fs = require('fs');
 const crypto = require('crypto');
-const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 
 const app = express();
 
 // =============================================
-// 🚀 ENHANCED SECURITY CONFIGURATION
+// 🚀 BASIC SECURITY CONFIGURATION
 // =============================================
 
 // 🔐 SECRET KEY UNTUK ENCRYPTION (SAMA DENGAN DI CLIENT)
 const VALIDATION_SECRET = process.env.VALIDATION_SECRET || 'zalyst-secure-validation-2024-secret-key-advanced-protection-system';
 
-// 🛡️ Security Middleware
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
+// 🛡️ Basic Security Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ⚡ Rate Limiting
-const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use(limiter);
 
 // =============================================
 // 📁 FILE MANAGEMENT SYSTEM
@@ -91,7 +72,7 @@ class EncryptedResponseSystem {
       const payload = {
         data: data,
         timestamp: timestamp,
-        version: '2.0.0'
+        version: '2.0.2'
       };
 
       // Generate signature
@@ -196,7 +177,7 @@ app.get('/', (req, res) => {
   res.json({ 
     status: 'Active',
     message: '🚀 Zalyst Enhanced Token Validator Server',
-    version: '2.0.0',
+    version: '2.0.2',
     security: 'Encrypted Response System Active',
     total_tokens: tokens.length,
     environment: process.env.NODE_ENV || 'development',
@@ -423,7 +404,7 @@ app.get('/list-tokens', (req, res) => {
       return {
         masked: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
         length: token.length,
-        added: 'N/A' // Could add timestamp tracking in future
+        added: 'N/A'
       };
     });
     
@@ -468,7 +449,7 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(60));
-  console.log('🚀 ZALYST ENHANCED TOKEN SERVER v2.0.0');
+  console.log('🚀 ZALYST ENHANCED TOKEN SERVER v2.0.2');
   console.log('='.repeat(60));
   console.log(`✅ Server running on port: ${PORT}`);
   console.log(`📁 Token database: ${TOKENS_FILE}`);
