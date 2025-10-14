@@ -431,11 +431,11 @@ app.use('*', (req, res) => {
     error: 'Endpoint not found',
     available_endpoints: [
       'GET /', 
-      'GET /health',
-      'POST /validate-token (Encrypted Support)', 
-      'POST /add-token', 
-      'DELETE /delete-token',
-      'GET /list-tokens'
+      'GET ',
+      'POST  (Encrypted Support)', 
+      'POST ', 
+      'DELETE ',
+      'GET '
     ],
     security_notice: 'Validation endpoint now supports encrypted requests for enhanced security'
   });
