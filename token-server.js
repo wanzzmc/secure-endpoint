@@ -183,11 +183,11 @@ app.get('/', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     timestamp: new Date().toISOString(),
     endpoints: {
-      validate: 'POST /validate-token (Encrypted)',
-      add_token: 'POST /add-token',
-      delete_token: 'DELETE /delete-token',
-      list_tokens: 'GET /list-tokens',
-      health: 'GET /health'
+      validate: 'POST (Encrypted)',
+      add_token: 'POST ',
+      delete_token: 'DELETE ',
+      list_tokens: 'GET ',
+      health: 'GET '
     }
   });
 });
