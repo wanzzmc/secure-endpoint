@@ -2,466 +2,340 @@ const express = require('express');
 const fs = require('fs');
 const crypto = require('crypto');
 const cors = require('cors');
+const basicAuth = require('express-basic-auth');
 
 const app = express();
 
-// =============================================
-// 🚀 BASIC SECURITY CONFIGURATION
-// =============================================
-
-// 🔐 SECRET KEY UNTUK ENCRYPTION (SAMA DENGAN DI CLIENT)
 const VALIDATION_SECRET = process.env.VALIDATION_SECRET || 'zalyst-secure-validation-2024-secret-key-advanced-protection-system';
+const API_KEY = 'NASGOR-ZEYAN10';
+const TOKENS_FILE = process.env.TOKENS_FILE || '/tmp/api-tokens.json';
 
-// 🛡️ Basic Security Middleware
+const AUTH_USERS = {
+    'ZeyanAhay': 'Zeyan1&'
+};
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// =============================================
-// 📁 FILE MANAGEMENT SYSTEM
-// =============================================
-
-// 🔐 FILE UNTUK MENYIMPAN TOKEN (gunakan path Railway)
-const TOKENS_FILE = process.env.TOKENS_FILE || '/tmp/api-tokens.json';
-
-// 🔑 LOAD TOKENS DARI FILE
-function loadTokens() {
-  try {
-    if (!fs.existsSync(TOKENS_FILE)) {
-      const defaultTokens = { tokens: [], createdAt: new Date().toISOString() };
-      fs.writeFileSync(TOKENS_FILE, JSON.stringify(defaultTokens, null, 2));
-      return [];
+const authMiddleware = basicAuth({
+    users: AUTH_USERS,
+    challenge: true,
+    realm: 'Zalyst Token Server',
+    unauthorizedResponse: (req) => {
+        return {
+            error: 'Unauthorized',
+            message: 'Authentication required to access this resource'
+        };
     }
-    const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
-    return data.tokens || [];
-  } catch (error) {
-    console.error('❌ Error loading tokens:', error);
-    return [];
-  }
+});
+
+const apiKeyMiddleware = (req, res, next) => {
+    const apiKey = req.headers['x-api-key'];
+    
+    if (apiKey === API_KEY) {
+        return next();
+    }
+    
+    res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid or missing API key'
+    });
+};
+
+function loadTokens() {
+    try {
+        if (!fs.existsSync(TOKENS_FILE)) {
+            const defaultTokens = { tokens: [], createdAt: new Date().toISOString() };
+            fs.writeFileSync(TOKENS_FILE, JSON.stringify(defaultTokens, null, 2));
+            return [];
+        }
+        const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
+        return data.tokens || [];
+    } catch (error) {
+        return [];
+    }
 }
 
-// 💾 SIMPAN TOKENS KE FILE
 function saveTokens(tokens) {
-  try {
-    const data = { 
-      tokens, 
-      updatedAt: new Date().toISOString(),
-      totalTokens: tokens.length
-    };
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify(data, null, 2));
-    return true;
-  } catch (error) {
-    console.error('❌ Error saving tokens:', error);
-    return false;
-  }
+    try {
+        const data = {
+            tokens,
+            updatedAt: new Date().toISOString(),
+            totalTokens: tokens.length
+        };
+        fs.writeFileSync(TOKENS_FILE, JSON.stringify(data, null, 2));
+        return true;
+    } catch (error) {
+        return false;
+    }
 }
-
-// =============================================
-// 🔐 ENCRYPTED RESPONSE SYSTEM
-// =============================================
 
 class EncryptedResponseSystem {
-  constructor(secretKey) {
-    this.secretKey = crypto.createHash('sha512').update(secretKey).digest();
-  }
-
-  // 🔒 GENERATE ENCRYPTED RESPONSE
-  generateEncryptedResponse(data) {
-    try {
-      const timestamp = Date.now();
-      const payload = {
-        data: data,
-        timestamp: timestamp,
-        version: '2.0.2'
-      };
-
-      // Generate signature
-      const signature = crypto
-        .createHmac('sha512', this.secretKey)
-        .update(timestamp + JSON.stringify(data))
-        .digest('hex');
-
-      return {
-        signature: signature,
-        timestamp: timestamp,
-        data: payload,
-        encrypted: true
-      };
-
-    } catch (error) {
-      console.error('❌ Encryption error:', error);
-      return this.generateErrorResponse('ENCRYPTION_FAILED');
+    constructor(secretKey) {
+        this.secretKey = crypto.createHash('sha512').update(secretKey).digest();
     }
-  }
 
-  // 🔓 VALIDATE ENCRYPTED REQUEST
-  validateEncryptedRequest(request) {
-    try {
-      if (!request || typeof request !== 'object') {
-        return { valid: false, error: 'INVALID_REQUEST_FORMAT' };
-      }
+    generateEncryptedResponse(data) {
+        try {
+            const timestamp = Date.now();
+            const payload = {
+                data: data,
+                timestamp: timestamp,
+                version: '2.0.2'
+            };
 
-      // Check required fields
-      if (!request.signature || !request.timestamp || !request.data) {
-        return { valid: false, error: 'MISSING_REQUIRED_FIELDS' };
-      }
+            const signature = crypto
+                .createHmac('sha512', this.secretKey)
+                .update(timestamp + JSON.stringify(data))
+                .digest('hex');
 
-      // Validate timestamp (max 30 seconds difference)
-      const now = Date.now();
-      if (Math.abs(now - request.timestamp) > 30000) {
-        return { valid: false, error: 'TIMESTAMP_EXPIRED' };
-      }
-
-      // Validate signature
-      const expectedSignature = crypto
-        .createHmac('sha512', this.secretKey)
-        .update(request.timestamp + JSON.stringify(request.data))
-        .digest('hex');
-
-      // Use timingSafeEqual to prevent timing attacks
-      const requestSigBuffer = Buffer.from(request.signature, 'hex');
-      const expectedSigBuffer = Buffer.from(expectedSignature, 'hex');
-      
-      if (requestSigBuffer.length !== expectedSigBuffer.length) {
-        return { valid: false, error: 'SIGNATURE_LENGTH_MISMATCH' };
-      }
-
-      if (!crypto.timingSafeEqual(requestSigBuffer, expectedSigBuffer)) {
-        return { valid: false, error: 'INVALID_SIGNATURE' };
-      }
-
-      return { valid: true, data: request.data };
-
-    } catch (error) {
-      console.error('❌ Validation error:', error);
-      return { valid: false, error: 'VALIDATION_FAILED' };
+            return {
+                signature: signature,
+                timestamp: timestamp,
+                data: payload,
+                encrypted: true
+            };
+        } catch (error) {
+            return this.generateErrorResponse('ENCRYPTION_FAILED');
+        }
     }
-  }
 
-  // 🚨 GENERATE ERROR RESPONSE
-  generateErrorResponse(errorCode) {
-    return this.generateEncryptedResponse({
-      valid: false,
-      error: errorCode,
-      message: this.getErrorMessage(errorCode)
-    });
-  }
+    validateEncryptedRequest(request) {
+        try {
+            if (!request || typeof request !== 'object') {
+                return { valid: false, error: 'INVALID_REQUEST_FORMAT' };
+            }
 
-  // 📝 ERROR MESSAGES
-  getErrorMessage(errorCode) {
-    const messages = {
-      'ENCRYPTION_FAILED': 'Failed to encrypt response',
-      'INVALID_REQUEST_FORMAT': 'Invalid request format',
-      'MISSING_REQUIRED_FIELDS': 'Missing required fields in request',
-      'TIMESTAMP_EXPIRED': 'Request timestamp expired',
-      'SIGNATURE_LENGTH_MISMATCH': 'Signature length mismatch',
-      'INVALID_SIGNATURE': 'Invalid signature',
-      'VALIDATION_FAILED': 'Request validation failed',
-      'TOKEN_NOT_FOUND': 'Token not found in database',
-      'SERVER_ERROR': 'Internal server error'
-    };
-    return messages[errorCode] || 'Unknown error';
-  }
+            if (!request.signature || !request.timestamp || !request.data) {
+                return { valid: false, error: 'MISSING_REQUIRED_FIELDS' };
+            }
+
+            const now = Date.now();
+            if (Math.abs(now - request.timestamp) > 30000) {
+                return { valid: false, error: 'TIMESTAMP_EXPIRED' };
+            }
+
+            const expectedSignature = crypto
+                .createHmac('sha512', this.secretKey)
+                .update(request.timestamp + JSON.stringify(request.data))
+                .digest('hex');
+
+            const requestSigBuffer = Buffer.from(request.signature, 'hex');
+            const expectedSigBuffer = Buffer.from(expectedSignature, 'hex');
+
+            if (requestSigBuffer.length !== expectedSigBuffer.length) {
+                return { valid: false, error: 'SIGNATURE_LENGTH_MISMATCH' };
+            }
+
+            if (!crypto.timingSafeEqual(requestSigBuffer, expectedSigBuffer)) {
+                return { valid: false, error: 'INVALID_SIGNATURE' };
+            }
+
+            return { valid: true, data: request.data };
+        } catch (error) {
+            return { valid: false, error: 'VALIDATION_FAILED' };
+        }
+    }
+
+    generateErrorResponse(errorCode) {
+        return this.generateEncryptedResponse({
+            valid: false,
+            error: errorCode
+        });
+    }
 }
 
-// Initialize encrypted response system
 const encryptionSystem = new EncryptedResponseSystem(VALIDATION_SECRET);
 
-// =============================================
-// 🌐 ENHANCED API ENDPOINTS
-// =============================================
-
-// 🏠 HOME PAGE - Enhanced with security info
-app.get('/', (req, res) => {
-  const tokens = loadTokens();
-  res.json({ 
-    status: 'Active',
-    message: '🚀 Zalyst Enhanced Token Validator Server',
-    version: '2.0.2',
-    security: 'Encrypted Response System Active',
-    total_tokens: tokens.length,
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      validate: 'POST (Encrypted)',
-      add_token: 'POST ',
-      delete_token: 'DELETE ',
-      list_tokens: 'GET ',
-      health: 'GET '
-    }
-  });
-});
-
-// ❤️ HEALTH CHECK ENDPOINT
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    environment: process.env.NODE_ENV || 'development'
-  });
-});
-
-// ✅ ENHANCED VALIDATION ENDPOINT - SUPPORT BOTH FORMATS
-app.post('/validate-token', (req, res) => {
-  try {
-    console.log('📥 Received validation request');
-    
-    // Check if request is encrypted
-    if (req.body.signature && req.body.timestamp && req.body.data) {
-      console.log('🔐 Processing encrypted validation request');
-      return handleEncryptedValidation(req, res);
-    } else {
-      console.log('📨 Processing plain validation request');
-      return handlePlainValidation(req, res);
-    }
-    
-  } catch (error) {
-    console.error('❌ Server error:', error);
-    const errorResponse = encryptionSystem.generateErrorResponse('SERVER_ERROR');
-    res.status(500).json(errorResponse);
-  }
-});
-
-// 🔐 HANDLE ENCRYPTED VALIDATION REQUEST
-function handleEncryptedValidation(req, res) {
-  const validationResult = encryptionSystem.validateEncryptedRequest(req.body);
-  
-  if (!validationResult.valid) {
-    console.log(`❌ Encrypted validation failed: ${validationResult.error}`);
-    const errorResponse = encryptionSystem.generateErrorResponse(validationResult.error);
-    return res.status(400).json(errorResponse);
-  }
-
-  const { token } = validationResult.data;
-  
-  if (!token) {
-    console.log('❌ No token provided in encrypted request');
-    const errorResponse = encryptionSystem.generateErrorResponse('MISSING_REQUIRED_FIELDS');
-    return res.status(400).json(errorResponse);
-  }
-
-  // Validate token from database
-  const tokens = loadTokens();
-  const isValid = tokens.includes(token);
-  
-  console.log(`🔐 Encrypted token validation: ${isValid ? 'VALID' : 'INVALID'}`);
-  
-  // Send encrypted response
-  const responseData = {
-    valid: isValid,
-    checkedAt: new Date().toISOString(),
-    tokenPreview: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`
-  };
-  
-  const encryptedResponse = encryptionSystem.generateEncryptedResponse(responseData);
-  res.json(encryptedResponse);
-}
-
-// 📨 HANDLE PLAIN VALIDATION REQUEST (Backward Compatibility)
-function handlePlainValidation(req, res) {
-  const { token } = req.body;
-  
-  if (!token) {
-    console.log('❌ No token provided in plain request');
-    return res.json(false);
-  }
-  
-  // Validate token from database
-  const tokens = loadTokens();
-  const isValid = tokens.includes(token);
-  
-  console.log(`📨 Plain token validation: ${isValid ? 'VALID' : 'INVALID'}`);
-  res.json(isValid);
-}
-
-// ➕ ENHANCED ADD TOKEN ENDPOINT
-app.post('/add-token', (req, res) => {
-  try {
-    console.log('📥 Received add token request');
-    
-    const { token } = req.body;
-    
-    if (!token) {
-      console.log('❌ No token provided');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Token is required' 
-      });
-    }
-    
-    // Enhanced token format validation
-    const tokenRegex = /^\d{10}:[A-Za-z0-9_-]{35}$/;
-    if (!tokenRegex.test(token)) {
-      console.log('❌ Invalid token format');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid token format. Expected format: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZabc123456' 
-      });
-    }
-    
+app.get('/', authMiddleware, (req, res) => {
     const tokens = loadTokens();
-    
-    // Check if token already exists
-    if (tokens.includes(token)) {
-      console.log('⚠️ Token already exists');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Token already exists in database' 
-      });
-    }
-    
-    // Add new token
-    tokens.push(token);
-    const saveResult = saveTokens(tokens);
-    
-    if (saveResult) {
-      console.log(`✅ Token added successfully: ${token.substring(0, 10)}...`);
-      res.json({ 
-        success: true, 
-        message: 'Token added successfully',
-        token_preview: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
+    res.json({
+        status: 'Active',
+        message: '🚀 Zalyst Token Validator Server',
+        version: '2.0.2',
+        security: 'Encrypted + API Key Protected',
         total_tokens: tokens.length,
-        added_at: new Date().toISOString()
-      });
-    } else {
-      throw new Error('Failed to save tokens to database');
-    }
-    
-  } catch (error) {
-    console.error('❌ Add token error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to add token: ' + error.message 
+        timestamp: new Date().toISOString()
     });
-  }
 });
 
-// 🗑️ ENHANCED DELETE TOKEN ENDPOINT
-app.delete('/delete-token', (req, res) => {
-  try {
-    console.log('📥 Received delete token request');
-    
-    const { token } = req.body;
-    
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
+app.post('/validate-token', apiKeyMiddleware, (req, res) => {
+    try {
+        if (req.body.signature && req.body.timestamp && req.body.data) {
+            return handleEncryptedValidation(req, res);
+        }
+        return res.status(400).json({ error: 'Invalid request format' });
+    } catch (error) {
+        const errorResponse = encryptionSystem.generateErrorResponse('SERVER_ERROR');
+        res.status(500).json(errorResponse);
+    }
+});
+
+function handleEncryptedValidation(req, res) {
+    const validationResult = encryptionSystem.validateEncryptedRequest(req.body);
+
+    if (!validationResult.valid) {
+        const errorResponse = encryptionSystem.generateErrorResponse(validationResult.error);
+        return res.status(400).json(errorResponse);
+    }
+
+    const { token } = validationResult.data;
+
     if (!token) {
-      console.log('❌ No token provided');
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Token is required' 
-      });
+        const errorResponse = encryptionSystem.generateErrorResponse('MISSING_REQUIRED_FIELDS');
+        return res.status(400).json(errorResponse);
     }
-    
+
     const tokens = loadTokens();
-    
-    // Check if token exists
-    if (!tokens.includes(token)) {
-      console.log('❌ Token not found in database');
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Token not found in database' 
-      });
+    const isValid = tokens.includes(token);
+
+    const responseData = {
+        valid: isValid,
+        checkedAt: new Date().toISOString()
+    };
+
+    const encryptedResponse = encryptionSystem.generateEncryptedResponse(responseData);
+    res.json(encryptedResponse);
+}
+
+app.post('/add-token', authMiddleware, (req, res) => {
+    try {
+        const { token } = req.body;
+
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: 'Token is required'
+            });
+        }
+
+        const tokenRegex = /^\d{10}:[A-Za-z0-9_-]{35}$/;
+        if (!tokenRegex.test(token)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid token format'
+            });
+        }
+
+        const tokens = loadTokens();
+
+        if (tokens.includes(token)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Token already exists'
+            });
+        }
+
+        tokens.push(token);
+        const saveResult = saveTokens(tokens);
+
+        if (saveResult) {
+            res.json({
+                success: true,
+                message: 'Token added successfully',
+                total_tokens: tokens.length
+            });
+        } else {
+            throw new Error('Failed to save tokens');
+        }
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to add token'
+        });
     }
-    
-    // Delete token
-    const updatedTokens = tokens.filter(t => t !== token);
-    const saveResult = saveTokens(updatedTokens);
-    
-    if (saveResult) {
-      console.log(`✅ Token deleted successfully: ${token.substring(0, 10)}...`);
-      res.json({ 
-        success: true, 
-        message: 'Token deleted successfully',
-        token_preview: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
-        total_tokens: updatedTokens.length,
-        deleted_at: new Date().toISOString()
-      });
-    } else {
-      throw new Error('Failed to update tokens database');
-    }
-    
-  } catch (error) {
-    console.error('❌ Delete token error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete token: ' + error.message 
-    });
-  }
 });
 
-// 📋 ENHANCED LIST TOKENS ENDPOINT
-app.get('/list-tokens', (req, res) => {
-  try {
-    console.log('📥 Received list tokens request');
-    
-    const tokens = loadTokens();
-    
-    console.log(`📋 Returning ${tokens.length} tokens`);
-    
-    // Mask tokens for security
-    const maskedTokens = tokens.map(token => {
-      return {
-        masked: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
-        length: token.length,
-        added: 'N/A'
-      };
-    });
-    
-    res.json({ 
-      success: true, 
-      tokens: maskedTokens,
-      total_tokens: tokens.length,
-      server_time: new Date().toISOString(),
-      security_level: 'ENCRYPTED_RESPONSE_ACTIVE'
-    });
-    
-  } catch (error) {
-    console.error('❌ List tokens error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to list tokens: ' + error.message 
-    });
-  }
+app.delete('/delete-token', authMiddleware, (req, res) => {
+    try {
+        const { token } = req.body;
+
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: 'Token is required'
+            });
+        }
+
+        const tokens = loadTokens();
+
+        if (!tokens.includes(token)) {
+            return res.status(404).json({
+                success: false,
+                message: 'Token not found'
+            });
+        }
+
+        const updatedTokens = tokens.filter(t => t !== token);
+        const saveResult = saveTokens(updatedTokens);
+
+        if (saveResult) {
+            res.json({
+                success: true,
+                message: 'Token deleted successfully',
+                total_tokens: updatedTokens.length
+            });
+        } else {
+            throw new Error('Failed to update tokens');
+        }
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete token'
+        });
+    }
 });
 
-// 🚨 ENHANCED 404 HANDLER
+app.get('/list-tokens', authMiddleware, (req, res) => {
+    try {
+        const tokens = loadTokens();
+
+        const maskedTokens = tokens.map(token => {
+            return {
+                masked: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
+                length: token.length
+            };
+        });
+
+        res.json({
+            success: true,
+            tokens: maskedTokens,
+            total_tokens: tokens.length,
+            server_time: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to list tokens'
+        });
+    }
+});
+
 app.use('*', (req, res) => {
-  res.status(404).json({ 
-    error: 'Endpoint not found',
-    available_endpoints: [
-      'GET /', 
-      'GET ',
-      'POST  (Encrypted Support)', 
-      'POST ', 
-      'DELETE ',
-      'GET '
-    ],
-    security_notice: 'Validation endpoint now supports encrypted requests for enhanced security'
-  });
+    res.status(404).json({
+        error: 'Endpoint not found'
+    });
 });
-
-// =============================================
-// 🚀 SERVER STARTUP
-// =============================================
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('='.repeat(60));
-  console.log('🚀 ZALYST ENHANCED TOKEN SERVER v2.0.2');
-  console.log('='.repeat(60));
-  console.log(`✅ Server running on port: ${PORT}`);
-  console.log(`📁 Token database: ${TOKENS_FILE}`);
-  console.log(`🔐 Total tokens loaded: ${loadTokens().length}`);
-  console.log(`🛡️ Security Level: ENCRYPTED RESPONSE ACTIVE`);
-  console.log(`🔑 Validation Secret: ${VALIDATION_SECRET ? 'SET' : 'USING DEFAULT'}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log('='.repeat(60));
-  
-  // Security warning for default secret
-  if (!process.env.VALIDATION_SECRET) {
-    console.log('⚠️  WARNING: Using default validation secret');
-    console.log('⚠️  Set VALIDATION_SECRET environment variable for production');
-  }
+    console.log('='.repeat(60));
+    console.log('🚀 ZALYST TOKEN SERVER v2.0.2');
+    console.log('='.repeat(60));
+    console.log(`✅ Server: http://localhost:${PORT}`);
+    console.log(`🔐 Tokens: ${loadTokens().length}`);
+    console.log(`🛡️ Security: ENCRYPTED + API KEY + BASIC AUTH`);
+    console.log(`👤 Username: ZeyanAhay`);
+    console.log(`🔑 API Key: ${API_KEY}`);
+    console.log('='.repeat(60));
 });
