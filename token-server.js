@@ -8,7 +8,7 @@ const app = express();
 
 const VALIDATION_SECRET = process.env.VALIDATION_SECRET || 'zalyst-secure-validation-2024-secret-key-advanced-protection-system';
 const API_KEY = 'NASGOR-ZEYAN10';
-const TOKENS_FILE = process.env.TOKENS_FILE || '/tmp/api-tokens.json';
+const TOKENS_FILE = process.env.TOKENS_FILE || './tokens.json';
 
 const AUTH_USERS = {
     'ZeyanAhay': 'Zeyan1&'
@@ -53,6 +53,7 @@ function loadTokens() {
         const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
         return data.tokens || [];
     } catch (error) {
+        console.error('Error loading tokens:', error);
         return [];
     }
 }
@@ -67,6 +68,7 @@ function saveTokens(tokens) {
         fs.writeFileSync(TOKENS_FILE, JSON.stringify(data, null, 2));
         return true;
     } catch (error) {
+        console.error('Error saving tokens:', error);
         return false;
     }
 }
@@ -79,12 +81,7 @@ class EncryptedResponseSystem {
     generateEncryptedResponse(data) {
         try {
             const timestamp = Date.now();
-            const payload = {
-                data: data,
-                timestamp: timestamp,
-                version: '2.0.2'
-            };
-
+            
             const signature = crypto
                 .createHmac('sha512', this.secretKey)
                 .update(timestamp + JSON.stringify(data))
@@ -93,10 +90,11 @@ class EncryptedResponseSystem {
             return {
                 signature: signature,
                 timestamp: timestamp,
-                data: payload,
+                data: data,
                 encrypted: true
             };
         } catch (error) {
+            console.error('Encryption error:', error);
             return this.generateErrorResponse('ENCRYPTION_FAILED');
         }
     }
@@ -104,15 +102,21 @@ class EncryptedResponseSystem {
     validateEncryptedRequest(request) {
         try {
             if (!request || typeof request !== 'object') {
+                console.log('Invalid request format');
                 return { valid: false, error: 'INVALID_REQUEST_FORMAT' };
             }
 
             if (!request.signature || !request.timestamp || !request.data) {
+                console.log('Missing required fields');
                 return { valid: false, error: 'MISSING_REQUIRED_FIELDS' };
             }
 
             const now = Date.now();
-            if (Math.abs(now - request.timestamp) > 30000) {
+            const timeDiff = Math.abs(now - request.timestamp);
+            console.log('Time difference:', timeDiff, 'ms');
+            
+            if (timeDiff > 30000) {
+                console.log('Timestamp expired');
                 return { valid: false, error: 'TIMESTAMP_EXPIRED' };
             }
 
@@ -121,19 +125,28 @@ class EncryptedResponseSystem {
                 .update(request.timestamp + JSON.stringify(request.data))
                 .digest('hex');
 
+            console.log('Expected signature:', expectedSignature.substring(0, 20) + '...');
+            console.log('Received signature:', request.signature.substring(0, 20) + '...');
+
             const requestSigBuffer = Buffer.from(request.signature, 'hex');
             const expectedSigBuffer = Buffer.from(expectedSignature, 'hex');
 
             if (requestSigBuffer.length !== expectedSigBuffer.length) {
+                console.log('Signature length mismatch');
                 return { valid: false, error: 'SIGNATURE_LENGTH_MISMATCH' };
             }
 
-            if (!crypto.timingSafeEqual(requestSigBuffer, expectedSigBuffer)) {
+            const signatureValid = crypto.timingSafeEqual(requestSigBuffer, expectedSigBuffer);
+            
+            if (!signatureValid) {
+                console.log('Invalid signature');
                 return { valid: false, error: 'INVALID_SIGNATURE' };
             }
 
+            console.log('Signature validation successful');
             return { valid: true, data: request.data };
         } catch (error) {
+            console.error('Validation error:', error);
             return { valid: false, error: 'VALIDATION_FAILED' };
         }
     }
@@ -168,48 +181,67 @@ app.get('/health', (req, res) => {
     });
 });
 
+// ENDPOINT UTAMA VALIDASI TOKEN
 app.post('/validate-token', apiKeyMiddleware, (req, res) => {
     try {
+        console.log('🔐 Received validation request');
+        
         if (req.body.signature && req.body.timestamp && req.body.data) {
             return handleEncryptedValidation(req, res);
         }
+        
+        console.log('❌ Invalid request format - missing encrypted fields');
         return res.status(400).json({ error: 'Invalid request format' });
     } catch (error) {
+        console.error('❌ Error in /validate-token:', error);
         const errorResponse = encryptionSystem.generateErrorResponse('SERVER_ERROR');
         res.status(500).json(errorResponse);
     }
 });
 
 function handleEncryptedValidation(req, res) {
+    console.log('🔍 Validating encrypted request...');
+    
     const validationResult = encryptionSystem.validateEncryptedRequest(req.body);
 
     if (!validationResult.valid) {
+        console.log('❌ Encrypted validation failed:', validationResult.error);
         const errorResponse = encryptionSystem.generateErrorResponse(validationResult.error);
         return res.status(400).json(errorResponse);
     }
 
     const { token } = validationResult.data;
+    console.log('🔑 Token to validate:', token ? token.substring(0, 10) + '...' : 'MISSING');
 
     if (!token) {
-        const errorResponse = encryptionSystem.generateErrorResponse('MISSING_REQUIRED_FIELDS');
+        console.log('❌ Token missing in request');
+        const errorResponse = encryptionSystem.generateErrorResponse('MISSING_TOKEN');
         return res.status(400).json(errorResponse);
     }
 
     const tokens = loadTokens();
+    console.log('📋 Total tokens in database:', tokens.length);
+    
     const isValid = tokens.includes(token);
+    console.log('✅ Token validation result:', isValid);
 
     const responseData = {
         valid: isValid,
-        checkedAt: new Date().toISOString()
+        checkedAt: new Date().toISOString(),
+        tokenExists: isValid
     };
 
     const encryptedResponse = encryptionSystem.generateEncryptedResponse(responseData);
+    console.log('📤 Sending encrypted response');
+    
     res.json(encryptedResponse);
 }
 
+// ENDPOUNT TAMBAH TOKEN
 app.post('/add-token', authMiddleware, (req, res) => {
     try {
         const { token } = req.body;
+        console.log('📥 Add token request:', token ? token.substring(0, 10) + '...' : 'MISSING');
 
         if (!token) {
             return res.status(400).json({
@@ -220,6 +252,7 @@ app.post('/add-token', authMiddleware, (req, res) => {
 
         const tokenRegex = /^\d{10}:[A-Za-z0-9_-]{35}$/;
         if (!tokenRegex.test(token)) {
+            console.log('❌ Invalid token format');
             return res.status(400).json({
                 success: false,
                 message: 'Invalid token format'
@@ -227,8 +260,10 @@ app.post('/add-token', authMiddleware, (req, res) => {
         }
 
         const tokens = loadTokens();
+        console.log('📊 Current tokens before add:', tokens.length);
 
         if (tokens.includes(token)) {
+            console.log('⚠️ Token already exists');
             return res.status(400).json({
                 success: false,
                 message: 'Token already exists'
@@ -239,6 +274,7 @@ app.post('/add-token', authMiddleware, (req, res) => {
         const saveResult = saveTokens(tokens);
 
         if (saveResult) {
+            console.log('✅ Token added successfully');
             res.json({
                 success: true,
                 message: 'Token added successfully',
@@ -248,6 +284,7 @@ app.post('/add-token', authMiddleware, (req, res) => {
             throw new Error('Failed to save tokens');
         }
     } catch (error) {
+        console.error('❌ Error adding token:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to add token'
@@ -255,9 +292,11 @@ app.post('/add-token', authMiddleware, (req, res) => {
     }
 });
 
+// ENDPOINT HAPUS TOKEN
 app.delete('/delete-token', authMiddleware, (req, res) => {
     try {
         const { token } = req.body;
+        console.log('🗑️ Delete token request:', token ? token.substring(0, 10) + '...' : 'MISSING');
 
         if (!token) {
             return res.status(400).json({
@@ -269,6 +308,7 @@ app.delete('/delete-token', authMiddleware, (req, res) => {
         const tokens = loadTokens();
 
         if (!tokens.includes(token)) {
+            console.log('❌ Token not found for deletion');
             return res.status(404).json({
                 success: false,
                 message: 'Token not found'
@@ -279,6 +319,7 @@ app.delete('/delete-token', authMiddleware, (req, res) => {
         const saveResult = saveTokens(updatedTokens);
 
         if (saveResult) {
+            console.log('✅ Token deleted successfully');
             res.json({
                 success: true,
                 message: 'Token deleted successfully',
@@ -288,6 +329,7 @@ app.delete('/delete-token', authMiddleware, (req, res) => {
             throw new Error('Failed to update tokens');
         }
     } catch (error) {
+        console.error('❌ Error deleting token:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to delete token'
@@ -295,14 +337,17 @@ app.delete('/delete-token', authMiddleware, (req, res) => {
     }
 });
 
+// ENDPOINT LIST TOKENS
 app.get('/list-tokens', authMiddleware, (req, res) => {
     try {
         const tokens = loadTokens();
+        console.log('📋 List tokens request, total:', tokens.length);
 
         const maskedTokens = tokens.map(token => {
             return {
                 masked: `${token.substring(0, 10)}...${token.substring(token.length - 5)}`,
-                length: token.length
+                length: token.length,
+                full: token // DEBUG: Tampilkan full token untuk testing
             };
         });
 
@@ -313,9 +358,43 @@ app.get('/list-tokens', authMiddleware, (req, res) => {
             server_time: new Date().toISOString()
         });
     } catch (error) {
+        console.error('❌ Error listing tokens:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to list tokens'
+        });
+    }
+});
+
+// DEBUG ENDPOINT - Untuk testing tanpa encryption
+app.post('/debug-validate-token', apiKeyMiddleware, (req, res) => {
+    try {
+        const { token } = req.body;
+        console.log('🐛 DEBUG Validate token:', token);
+
+        if (!token) {
+            return res.status(400).json({
+                valid: false,
+                error: 'Token required'
+            });
+        }
+
+        const tokens = loadTokens();
+        const isValid = tokens.includes(token);
+
+        console.log('🐛 DEBUG Token exists:', isValid);
+        console.log('🐛 DEBUG All tokens:', tokens);
+
+        res.json({
+            valid: isValid,
+            checkedAt: new Date().toISOString(),
+            debug: true
+        });
+    } catch (error) {
+        console.error('🐛 DEBUG Error:', error);
+        res.status(500).json({
+            valid: false,
+            error: error.message
         });
     }
 });
@@ -330,12 +409,13 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('='.repeat(60));
-    console.log('🚀 ZALYST TOKEN SERVER v2.0.2');
+    console.log('🚀 ZALYST TOKEN SERVER v2.0.2 - DEBUG MODE');
     console.log('='.repeat(60));
     console.log(`✅ Server: http://localhost:${PORT}`);
     console.log(`🔐 Tokens: ${loadTokens().length}`);
     console.log(`🛡️ Security: ENCRYPTED + API KEY + BASIC AUTH`);
     console.log(`👤 Username: ZeyanAhay`);
     console.log(`🔑 API Key: ${API_KEY}`);
+    console.log(`📁 Token file: ${TOKENS_FILE}`);
     console.log('='.repeat(60));
 });
